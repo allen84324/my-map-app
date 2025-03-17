@@ -5,6 +5,17 @@ import 'leaflet/dist/leaflet.css'
 import 'leaflet-control-geocoder/dist/Control.Geocoder.css'
 import 'leaflet-control-geocoder'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
+import markerIcon from 'leaflet/dist/images/marker-icon.png'
+import markerShadow from 'leaflet/dist/images/marker-shadow.png'
+
+const customIcon = new L.Icon({
+	iconUrl: markerIcon,
+	shadowUrl: markerShadow,
+	iconSize: [25, 41],
+	iconAnchor: [12, 41],
+	popupAnchor: [1, -34],
+	shadowSize: [41, 41],
+})
 
 const MapComponent = () => {
 	const [markers, setMarkers] = useState([])
@@ -262,7 +273,11 @@ const MapComponent = () => {
 					attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 				/>
 				{markers.map((marker, index) => (
-					<Marker key={index} position={[marker.lat, marker.lng]} />
+					<Marker
+						key={index}
+						position={[marker.lat, marker.lng]}
+						icon={customIcon}
+					/>
 				))}
 				<AddGeocoder />
 			</MapContainer>

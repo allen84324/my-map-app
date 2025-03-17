@@ -188,6 +188,7 @@ const MapComponent = () => {
 										background: '#f0f0f0',
 										margin: '5px 0',
 										cursor: 'pointer',
+										color: 'black',
 									}}
 								>
 									{result.fullLocation}
@@ -222,6 +223,7 @@ const MapComponent = () => {
 													margin: '5px 0',
 													background: '#f0f0f0',
 													borderRadius: '5px',
+													color: 'black',
 													cursor: 'grab',
 													...provided.draggableProps.style,
 												}}

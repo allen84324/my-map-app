@@ -14,7 +14,8 @@ body {
 button {
 	color: initial;
 	background-color: white;
-	border-radius: 1px solid black;
+	border: 1px solid black;
+	border-radius: 5px;
 }
 /* 側邊欄 */
 .sidebar {

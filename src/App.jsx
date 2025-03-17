@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -6,6 +6,8 @@ import 'leaflet-control-geocoder/dist/Control.Geocoder.css'
 import 'leaflet-control-geocoder'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
 import markerIcon from './img/map.png'
+import polyline from '@mapbox/polyline'
+import './App.css'
 
 const customIcon = new L.Icon({
 	iconUrl: markerIcon,
@@ -15,44 +17,117 @@ const customIcon = new L.Icon({
 	shadowSize: [41, 41],
 })
 
-const MapComponent = () => {
+const MapComponent = ({
+	markers,
+	setMarkers,
+	setErrorMessage,
+	addMarker,
+	setMapInstance,
+}) => {
+	const map = useMap()
+
+	// 將地圖實例傳回 App
+	useEffect(() => {
+		setMapInstance(map)
+	}, [map, setMapInstance])
+
+	// 地圖搜尋控制元件 geocoderControl
+	useEffect(() => {
+		if (!map.geocoderAdded) {
+			const geocoderControl = L.Control.geocoder({
+				defaultMarkGeocode: false,
+				geocoder: L.Control.Geocoder.nominatim(),
+			})
+				.on('markgeocode', function (e) {
+					const { center, name } = e.geocode
+					addMarker({
+						lat: center.lat,
+						lng: center.lng,
+						name: name || '未知地點',
+					})
+				})
+				.addTo(map)
+			map.geocoderAdded = true
+		}
+	}, [map, addMarker])
+
+	return (
+		<>
+			<TileLayer
+				url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+				attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+			/>
+			{markers.map((marker, index) => (
+				<Marker
+					key={index}
+					position={[marker.lat, marker.lng]}
+					icon={customIcon}
+				/>
+			))}
+		</>
+	)
+}
+
+const App = () => {
 	const [markers, setMarkers] = useState([])
 	const [errorMessage, setErrorMessage] = useState('')
 	const [searchResults, setSearchResults] = useState([]) // 儲存搜尋結果
 	const [selectedMarkers, setSelectedMarkers] = useState([]) // 儲存選中的標記
+	const [map, setMap] = useState(null) // 存放地圖實例
+	const [transportMode, setTransportMode] = useState('driving') // 運輸模式：駕車、騎車、步行
+	const routeLineRef = useRef(null) // 用來儲存目前的路徑
 
-	// 地圖搜尋控制元件
-	const AddGeocoder = () => {
-		const map = useMap()
+	// 計算路徑（僅在按下「顯示最佳路徑」時觸發）
+	const calculateRoute = (coordinates, map, mode) => {
+		const url = `https://router.project-osrm.org/route/v1/${mode}/${coordinates.join(
+			';'
+		)}?steps=true&geometries=polyline`
 
-		useEffect(() => {
-			if (!map.geocoderAdded) {
-				const geocoderControl = L.Control.geocoder({
-					defaultMarkGeocode: false,
-					geocoder: L.Control.Geocoder.nominatim(),
-				})
-					.on('markgeocode', function (e) {
-						const { center, name } = e.geocode
-						addMarker({
-							lat: center.lat,
-							lng: center.lng,
-							name: name || '未知地點',
-						})
-					})
-					.addTo(map)
+		fetch(url)
+			.then((response) => response.json())
+			.then((data) => {
+				if (data.routes && data.routes.length > 0) {
+					const route = data.routes[0]
+					const routeCoordinates = polyline
+						.decode(route.geometry)
+						.map((point) => L.latLng(point[0], point[1]))
 
-				map.geocoderAdded = true
-			}
-		}, [map])
+					// 清除舊路徑（若存在）
+					if (routeLineRef.current) {
+						map.removeLayer(routeLineRef.current)
+					}
 
-		return null
+					// 畫出新路徑
+					const routeLine = L.polyline(routeCoordinates, {
+						color: 'blue',
+						weight: 5,
+					}).addTo(map)
+					map.fitBounds(routeLine.getBounds())
+
+					// 儲存目前的路徑
+					routeLineRef.current = routeLine
+				} else {
+					setErrorMessage('無法計算路徑')
+				}
+			})
+			.catch((error) => {
+				console.error('發生錯誤:', error)
+				setErrorMessage('無法聯繫 OSRM 伺服器')
+			})
 	}
 
-	// 添加標記
-	const addMarker = (location) => {
-		const newMarkers = [...markers, location]
-		setMarkers(newMarkers)
-		localStorage.setItem('savedLocations', JSON.stringify(newMarkers))
+	// 顯示路徑（按下按鈕後觸發）
+	const handleShowRoute = () => {
+		if (markers.length < 2) {
+			setErrorMessage('請選擇至少兩個地點')
+			return
+		}
+		if (!map) {
+			setErrorMessage('地圖尚未初始化')
+			return
+		}
+		const coordinates = markers.map((marker) => `${marker.lng},${marker.lat}`)
+		calculateRoute(coordinates, map, transportMode)
 	}
 
 	// 處理搜尋地址
@@ -60,7 +135,6 @@ const MapComponent = () => {
 		const locationName = prompt('輸入地點名稱 (例如: 台北車站)')
 		if (!locationName) return
 
-		// 發送請求到 Nominatim API
 		const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
 			locationName
 		)}&limit=5&format=json&addressdetails=1`
@@ -69,14 +143,13 @@ const MapComponent = () => {
 			.then((response) => response.json())
 			.then((results) => {
 				if (results && results.length > 0) {
-					// 儲存搜尋結果
 					const locationList = results.map((result, index) => ({
 						name: result.display_name || `位置 ${index + 1}`,
 						lat: parseFloat(result.lat),
 						lng: parseFloat(result.lon),
 						fullLocation: result.display_name,
 					}))
-					setSearchResults(locationList) // 更新搜尋結果狀態
+					setSearchResults(locationList)
 					setErrorMessage('')
 				} else {
 					setErrorMessage('找不到這個地點')
@@ -88,14 +161,17 @@ const MapComponent = () => {
 			})
 	}
 
-	// 點選選擇地點
+	// 點選搜尋結果中的地點
 	const handleSelectLocation = (lat, lng, name) => {
-		addMarker({
-			lat,
-			lng,
-			name,
-		})
+		addMarker({ lat, lng, name })
 		setSearchResults([]) // 清空搜尋結果
+	}
+
+	// 添加標記（同時更新 localStorage）
+	const addMarker = (location) => {
+		const newMarkers = [...markers, location]
+		setMarkers(newMarkers)
+		localStorage.setItem('savedLocations', JSON.stringify(newMarkers))
 	}
 
 	// 清除選中的標記
@@ -104,7 +180,7 @@ const MapComponent = () => {
 			(marker) => !selectedMarkers.includes(marker.name)
 		)
 		setMarkers(filteredMarkers)
-		setSelectedMarkers([]) // 清空選中的標記
+		setSelectedMarkers([])
 		localStorage.setItem('savedLocations', JSON.stringify(filteredMarkers))
 	}
 
@@ -117,10 +193,10 @@ const MapComponent = () => {
 		)
 	}
 
-	// 清除標記
+	// 清除所有標記
 	const handleClearMarkers = () => {
 		setMarkers([])
-		setSelectedMarkers([]) // 清空選中的標記
+		setSelectedMarkers([])
 		localStorage.removeItem('savedLocations')
 	}
 
@@ -130,7 +206,6 @@ const MapComponent = () => {
 		const reorderedMarkers = [...markers]
 		const [movedItem] = reorderedMarkers.splice(result.source.index, 1)
 		reorderedMarkers.splice(result.destination.index, 0, movedItem)
-
 		setMarkers(reorderedMarkers)
 		localStorage.setItem('savedLocations', JSON.stringify(reorderedMarkers))
 	}
@@ -161,27 +236,26 @@ const MapComponent = () => {
 	}, [])
 
 	return (
-		<div
-			style={{
-				textAlign: 'center',
-				display: 'flex',
-				flexDirection: 'row',
-				justifyContent: 'center',
-				gap: '20px',
-			}}
-		>
-			{/* 控制按鈕 & 清單 */}
-			<div>
+		<div className="container">
+			<div className="sidebar">
 				<button onClick={handleAddLocation}>新增地點</button>
 				<button onClick={handleClearMarkers}>清除所有地點</button>
 				<button onClick={handleClearSelectedMarkers}>清除選中地點</button>
+				<select
+					value={transportMode}
+					onChange={(e) => setTransportMode(e.target.value)}
+				>
+					<option value="driving">駕車</option>
+					<option value="cycling">騎車</option>
+					<option value="walking">步行</option>
+				</select>
+				<button onClick={handleShowRoute}>顯示最佳路徑</button>
 				{errorMessage && <p style={{ color: 'red' }}>{errorMessage}</p>}
 
-				{/* 顯示搜尋結果 */}
 				{searchResults.length > 0 && (
 					<div>
 						<h3>搜尋結果</h3>
-						<ul style={{ listStyleType: 'none', padding: 0 }}>
+						<ul>
 							{searchResults.map((result, index) => (
 								<li
 									key={index}
@@ -192,13 +266,6 @@ const MapComponent = () => {
 											result.fullLocation
 										)
 									}
-									style={{
-										padding: '10px',
-										background: '#f0f0f0',
-										margin: '5px 0',
-										cursor: 'pointer',
-										color: 'black',
-									}}
 								>
 									{result.fullLocation}
 								</li>
@@ -207,15 +274,10 @@ const MapComponent = () => {
 					</div>
 				)}
 
-				{/* 可拖曳地點列表 */}
 				<DragDropContext onDragEnd={handleDragEnd}>
 					<Droppable droppableId="locations">
 						{(provided) => (
-							<ul
-								{...provided.droppableProps}
-								ref={provided.innerRef}
-								style={{ listStyle: 'none', padding: 0 }}
-							>
+							<ul {...provided.droppableProps} ref={provided.innerRef}>
 								{markers.map((marker, index) => (
 									<Draggable
 										key={index}
@@ -227,21 +289,11 @@ const MapComponent = () => {
 												ref={provided.innerRef}
 												{...provided.draggableProps}
 												{...provided.dragHandleProps}
-												style={{
-													padding: '10px',
-													margin: '5px 0',
-													background: '#f0f0f0',
-													borderRadius: '5px',
-													color: 'black',
-													cursor: 'grab',
-													...provided.draggableProps.style,
-												}}
 											>
 												<input
 													type="checkbox"
 													checked={selectedMarkers.includes(marker.name)}
 													onChange={() => toggleSelectMarker(marker.name)}
-													style={{ marginRight: '10px' }}
 												/>
 												📍 {marker.name} ({marker.lat.toFixed(5)},{' '}
 												{marker.lng.toFixed(5)})
@@ -256,31 +308,24 @@ const MapComponent = () => {
 				</DragDropContext>
 			</div>
 
-			{/* 地圖 */}
-			<MapContainer
-				center={[25.033, 121.565]}
-				zoom={12}
-				style={{
-					height: '500px',
-					width: '700px',
-					display: 'block',
-				}}
-			>
-				<TileLayer
-					url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-					attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-				/>
-				{markers.map((marker, index) => (
-					<Marker
-						key={index}
-						position={[marker.lat, marker.lng]}
-						icon={customIcon}
+			<div className="map">
+				<MapContainer
+					center={[25.033, 121.565]}
+					zoom={12}
+					style={{ height: '100%', width: '100%' }}
+					whenCreated={setMap}
+				>
+					<MapComponent
+						markers={markers}
+						setMarkers={setMarkers}
+						setErrorMessage={setErrorMessage}
+						addMarker={addMarker}
+						setMapInstance={setMap}
 					/>
-				))}
-				<AddGeocoder />
-			</MapContainer>
+				</MapContainer>
+			</div>
 		</div>
 	)
 }
 
-export default MapComponent
+export default App

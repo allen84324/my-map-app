@@ -13,6 +13,7 @@ body {
 
 button {
 	color: initial;
+	background-color: white;
 }
 /* 側邊欄 */
 .sidebar {

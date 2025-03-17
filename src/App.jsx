@@ -5,12 +5,10 @@ import 'leaflet/dist/leaflet.css'
 import 'leaflet-control-geocoder/dist/Control.Geocoder.css'
 import 'leaflet-control-geocoder'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
-import markerIcon from 'leaflet/dist/images/marker-icon.png'
-import markerShadow from 'leaflet/dist/images/marker-shadow.png'
+import markerIcon from './img/map.png'
 
 const customIcon = new L.Icon({
 	iconUrl: markerIcon,
-	shadowUrl: markerShadow,
 	iconSize: [25, 41],
 	iconAnchor: [12, 41],
 	popupAnchor: [1, -34],

@@ -241,15 +241,19 @@ const App = () => {
 				<button onClick={handleAddLocation}>新增地點</button>
 				<button onClick={handleClearMarkers}>清除所有地點</button>
 				<button onClick={handleClearSelectedMarkers}>清除選中地點</button>
-				<select
-					value={transportMode}
-					onChange={(e) => setTransportMode(e.target.value)}
-				>
-					<option value="driving">駕車</option>
-					<option value="cycling">騎車</option>
-					<option value="walking">步行</option>
-				</select>
-				<button onClick={handleShowRoute}>顯示最佳路徑</button>
+				<div>
+					<select
+						value={transportMode}
+						onChange={(e) => setTransportMode(e.target.value)}
+					>
+						<option value="driving">駕車</option>
+						<option value="cycling">騎車</option>
+						<option value="walking">步行</option>
+					</select>
+					<button onClick={handleShowRoute}>
+						顯示最佳路徑(新增/刪除地點請重新點擊)
+					</button>
+				</div>
 				{errorMessage && <p style={{ color: 'red' }}>{errorMessage}</p>}
 
 				{searchResults.length > 0 && (
